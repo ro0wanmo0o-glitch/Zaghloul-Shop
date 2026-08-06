@@ -1,6 +1,3 @@
-تفضلي، تم تعديل شاشة المبيعات للجميع (المدير والموظفين).
-الآن بمجرد كتابة أول حرف أو حروف في خانة البحث/اختيار المنتج، ستظهر لكِ قائمة منسدلة بجميع المنتجات التي تحتوي أو تبدأ بهذه الحروف. وبمجرد اختيار المنتج، يتم ملء خانة الكود وسعر البيع وسعر التكلفة تلقائياً.
-انسخي الكود المحدث بالكامل واستبدلي به محتوى ملف app.py:
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -217,45 +214,42 @@ else:
             
         st.markdown("---")
         
-        col_prod1, col_prod2 = st.columns(2)
-        
         selected_code = ""
         selected_name = ""
         cost_price = 0.0
         sell_price = 0.0
         available_qty = 0
 
-        with col_prod1:
-            if not df_stock.empty:
-                # إنشاء قائمة بالأسماء والرموز مع إمكانية البحث الفوري بحروف الاسم
-                item_options = [""] + [f"{row['اسم المنتج']} (كود: {row['كود المنتج']})" for _, row in df_stock.iterrows()]
-                chosen_item = st.selectbox("ابحث عن اسم المنتج (اكتب أول حرف أو حروف):", options=item_options, key="sale_product_select")
+        if not df_stock.empty:
+            item_options = [""] + [f"{row['اسم المنتج']} | [كود: {row['كود المنتج']}]" for _, row in df_stock.iterrows()]
+            chosen_item = st.selectbox("ابحث عن اسم المنتج (اكتب اسم أو كود المنتج):", options=item_options, key="sale_product_select")
+            
+            if chosen_item:
+                selected_name = chosen_item.split(" | [كود: ")[0]
+                extracted_code = chosen_item.split(" | [كود: ")[1].replace("]", "").strip()
                 
-                if chosen_item:
-                    # استخراج اسم المنتج والكود المقابل له
-                    selected_name = chosen_item.split(" (كود: ")[0]
-                    extracted_code = chosen_item.split(" (كود: ")[1].replace(")", "").strip()
-                    
-                    match = df_stock[df_stock["كود المنتج"] == extracted_code]
-                    if not match.empty:
-                        idx = match.index[0]
-                        selected_code = extracted_code
-                        cost_price = float(df_stock.at[idx, "سعر الشراء (التكلفة)"])
-                        sell_price = float(df_stock.at[idx, "سعر البيع"])
-                        available_qty = int(df_stock.at[idx, "الكمية المتاحة"])
-            else:
-                st.info("لا توجد منتجات في المخزون بعد.")
+                match = df_stock[df_stock["كود المنتج"] == extracted_code]
+                if not match.empty:
+                    idx = match.index[0]
+                    selected_code = extracted_code
+                    cost_price = float(df_stock.at[idx, "سعر الشراء (التكلفة)"])
+                    sell_price = float(df_stock.at[idx, "سعر البيع"])
+                    available_qty = int(df_stock.at[idx, "الكمية المتاحة"])
 
-        with col_prod2:
-            st.text_input("اسم المنتج المحدد", value=selected_name, key="sale_name_in", disabled=True)
-            st.text_input("كود المنتج تلقائياً", value=selected_code, key="sale_code_in", disabled=True)
+            col_info1, col_info2, col_info3 = st.columns(3)
+            with col_info1:
+                st.info(f"📌 **الكود:** {selected_code if selected_code else 'غير محدد'}")
+            with col_info2:
+                st.info(f"💵 **سعر البيع:** {sell_price:,.2f} ج.م")
+            with col_info3:
+                st.info(f"📦 **المتاح:** {available_qty} قطعة")
+        else:
+            st.info("لا توجد منتجات في المخزون بعد.")
 
         col_qty1, col_qty2 = st.columns(2)
         with col_qty1:
             qty = st.number_input("الكمية المباعة", min_value=1, value=1)
-            if available_qty > 0:
-                st.caption(f"الكمية المتاحة حالياً بالمخزون: **{available_qty}** قطعة")
-            elif chosen_item and available_qty == 0:
+            if chosen_item and available_qty == 0:
                 st.error("⚠️ هذا المنتج نفد بالكامل من المخزون!")
         with col_qty2:
             if st.session_state.role == "admin":
@@ -265,10 +259,12 @@ else:
                 st.info(f"تاريخ الفاتورة: {sale_date}")
 
         if st.button("💾 تسجيل عملية البيع", type="primary"):
-            final_code = selected_code.strip() if selected_code.strip() else "بدون كود"
-            final_name = selected_name.strip() if selected_name.strip() else "منتج غير مسمى"
-            
-            if final_code != "بدون كود":
+            if not selected_code:
+                st.error("يرجى اختيار منتج أولاً!")
+            else:
+                final_code = selected_code
+                final_name = selected_name
+                
                 match_idx = df_stock[df_stock["كود المنتج"] == final_code].index
                 if not match_idx.empty:
                     idx = match_idx[0]
@@ -280,21 +276,21 @@ else:
                     df_stock.at[idx, "الكمية المتاحة"] = new_qty
                     df_stock.to_excel(EXCEL_FILE, index=False)
 
-            st.session_state.sales_history.append({
-                "التاريخ": str(sale_date),
-                "العميل": customer_name,
-                "رقم الهاتف": customer_phone,
-                "كود المنتج": final_code,
-                "اسم المنتج": final_name,
-                "الكمية": qty,
-                "تكلفة القطعة": cost_price,
-                "سعر البيع للقطعة": sell_price,
-                "إجمالي البيع": qty * sell_price,
-                "صافي الربح": qty * (sell_price - cost_price),
-                "الموظف": st.session_state.user_name
-            })
-            st.success("تم تسجيل عملية البيع بنجاح!")
-            st.rerun()
+                st.session_state.sales_history.append({
+                    "التاريخ": str(sale_date),
+                    "العميل": customer_name,
+                    "رقم الهاتف": customer_phone,
+                    "كود المنتج": final_code,
+                    "اسم المنتج": final_name,
+                    "الكمية": qty,
+                    "تكلفة القطعة": cost_price,
+                    "سعر البيع للقطعة": sell_price,
+                    "إجمالي البيع": qty * sell_price,
+                    "صافي الربح": qty * (sell_price - cost_price),
+                    "الموظف": st.session_state.user_name
+                })
+                st.success("تم تسجيل عملية البيع بنجاح!")
+                st.rerun()
 
         st.markdown("---")
         st.subheader("📋 سجل عمليات البيع المسجلة")
@@ -523,4 +519,3 @@ else:
                     st.success("جميع الأصناف متوفرة بكميات آمنة داخل المخزون.")
             else:
                 st.info("المخزون فارغ حالياً.")
-
