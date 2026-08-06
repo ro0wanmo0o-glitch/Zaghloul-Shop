@@ -3,8 +3,8 @@ import pandas as pd
 from datetime import datetime
 import os
 import io
+import re
 
-# استيراد مكتبات ReportLab لتوليد ملفات PDF
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -14,7 +14,6 @@ EXCEL_FILE = "Items Body Care.xlsx"
 
 st.set_page_config(page_title="ZAGHLOUL - World Of Care", page_icon="🛍️", layout="wide")
 
-# حفظ بيانات الجلسة وسجل المبيعات
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.role = None
@@ -23,7 +22,6 @@ if "logged_in" not in st.session_state:
 if "sales_history" not in st.session_state:
     st.session_state.sales_history = []
 
-# تهيئة ملف الإكسل
 def init_empty_excel():
     columns = ["كود المنتج", "اسم المنتج", "سعر الشراء (التكلفة)", "سعر البيع", "الكمية المتاحة", "تاريخ الإضافة"]
     df_empty = pd.DataFrame(columns=columns)
@@ -32,44 +30,58 @@ def init_empty_excel():
 if not os.path.exists(EXCEL_FILE):
     init_empty_excel()
 
-# دالة التكويد التلقائي الموحد (3 حروف كابيتال)
+def normalize_arabic(text):
+    text = re.sub(r"[إأآا]", "ا", text)
+    text = re.sub(r"ى", "ي", text)
+    text = re.sub(r"ؤ", "و", text)
+    text = re.sub(r"ئ", "ي", text)
+    text = re.sub(r"ة", "ه", text)
+    return text.strip().lower()
+
 def get_auto_code_prefix(product_name):
-    p_name = product_name.strip().lower()
+    p_name = normalize_arabic(product_name)
     
-    # قاموس القواعد والتطابق
     rules = [
         ("بادي سبلاش", "BSP"),
-        ("مسك", "MST"),
-        ("مخمرية", "MKH"),
-        ("برفان", "PRF"),
+        ("بادي", "BSP"),
+        ("سبلاش", "BSP"),
         ("مزيل عرق كريم", "DCR"),
         ("مزيل عرق سبراي", "DSP"),
         ("مزيل عرق", "DCR"),
+        ("مزيل", "DCR"),
+        ("مسك طهاره", "MST"),
+        ("مسك", "MST"),
+        ("مخمريه", "MKH"),
+        ("برفان", "PRF"),
+        ("عطر", "PRF"),
         ("حلق", "ERG"),
-        ("سلسلة", "NLK"),
-        ("طرحة", "SCV"),
-        ("بندانة", "BND"),
+        ("سلسله", "NLK"),
+        ("طرحه", "SCV"),
+        ("بندانه", "BND"),
         ("معصم", "SLV"),
-        ("شنطة هدايا", "GBG"),
+        ("شنطه هدايا", "GBG"),
+        ("بوكس هدايا", "GBX"),
         ("بوكس", "GBX"),
+        ("شيت ماسك", "SMK"),
         ("ماسك", "SMK"),
-        ("أظافر", "NLC"),
+        ("اظافر", "NLC"),
         ("ظافر", "NLC"),
+        ("عنايه باليدين", "HNC"),
         ("يدين", "HNC"),
+        ("عنايه بالقدمين", "FTC"),
         ("قدمين", "FTC"),
-        ("شنطة ظهر", "BPK"),
-        ("شنطة كروس", "CRB"),
-        ("محفظة", "WLT"),
-        ("شنطة", "CRB")
+        ("شنطه ظهر", "BPK"),
+        ("شنطه كروس", "CRB"),
+        ("محفظه", "WLT"),
+        ("شنطه", "CRB")
     ]
     
     for key, code in rules:
-        if key in p_name:
+        if normalize_arabic(key) in p_name:
             return code
             
-    return "ZAG" # كود افتراضي للعلامة التجارية في حال عدم وجود كلمة مفتاحية
+    return "ZAG"
 
-# دالة إنشاء تقرير PDF
 def generate_pdf_report(today_rev, today_profit, month_rev, month_profit, stock_cost, stock_sale):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
@@ -84,7 +96,6 @@ def generate_pdf_report(today_rev, today_profit, month_rev, month_profit, stock_
     )
     
     elements = []
-    
     elements.append(Paragraph("ZAGHLOUL - World Of Care", title_style))
     elements.append(Paragraph("Financial & Inventory Summary Report", styles['Heading2']))
     elements.append(Paragraph(f"Generated Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}", styles['Normal']))
@@ -115,27 +126,24 @@ def generate_pdf_report(today_rev, today_profit, month_rev, month_profit, stock_
     
     elements.append(t)
     doc.build(elements)
-    
     buffer.seek(0)
     return buffer
 
-# شاشة تسجيل الدخول
 if not st.session_state.logged_in:
     st.markdown("<h1 style='text-align: center; color: #1B365D;'>ZAGHLOUL - World Of Care</h1>", unsafe_allow_html=True)
-    st.markdown("<h4 style='text-align: center; color: #555;'>نظام إدارة المبيعات والمخزون والمشتريات Enterprise</h4>", unsafe_allow_html=True)
     st.markdown("---")
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.subheader("🔑 تسجيل الدخول للنظام")
-        username = st.text_input("اسم المستخدم (Username)")
-        password = st.text_input("كلمة السر (Password)", type="password")
+        username = st.text_input("اسم المستخدم")
+        password = st.text_input("كلمة السر", type="password")
         
         if st.button("دخول للنظام", type="primary", use_container_width=True):
             if username == "admin" and password == "182":
                 st.session_state.logged_in = True
                 st.session_state.role = "admin"
-                st.session_state.user_name = "محمد زغلول (المدير المسؤول)"
+                st.session_state.user_name = "محمد زغلول"
                 st.rerun()
             elif username == "emp1" and password == "132":
                 st.session_state.logged_in = True
@@ -160,19 +168,16 @@ else:
     st.markdown(f"##### المستخدم الحالي: **{st.session_state.user_name}**")
     st.markdown("---")
 
-    # تحميل البيانات
     try:
         df_stock = pd.read_excel(EXCEL_FILE)
     except Exception:
         df_stock = pd.DataFrame(columns=["كود المنتج", "اسم المنتج", "سعر الشراء (التكلفة)", "سعر البيع", "الكمية المتاحة", "تاريخ الإضافة"])
 
-    # تنبيه مباشر بنواقص المخزون في أعلى النظام
     if not df_stock.empty and "الكمية المتاحة" in df_stock.columns:
         low_stock_items = df_stock[df_stock["الكمية المتاحة"] <= 5]
         if not low_stock_items.empty:
-            st.error(f"🚨 **تنبيه هام:** يوجد ({len(low_stock_items)}) منتجات في المخزون أوشكت على النفاد (5 قطع أو أقل)!")
+            st.error(f"🚨 **تنبيه هام:** يوجد ({len(low_stock_items)}) منتجات أوشكت على النفاد!")
 
-    # التبويبات حسب الصلاحيات
     if st.session_state.role == "admin":
         tab1, tab2, tab3, tab4 = st.tabs([
             "🛒 شاشة المبيعات", 
@@ -189,9 +194,9 @@ else:
         st.subheader("تسجيل فاتورة بيع جديدة")
         col_c1, col_c2 = st.columns(2)
         with col_c1:
-            customer_name = st.text_input("اسم المشتري (اختياري)", value="عميل نقدي")
+            customer_name = st.text_input("اسم المشتري", value="عميل نقدي")
         with col_c2:
-            customer_phone = st.text_input("رقم الهاتف (اختياري)", value="")
+            customer_phone = st.text_input("رقم الهاتف", value="")
             
         st.markdown("---")
         
@@ -206,7 +211,7 @@ else:
         with col_prod1:
             if not df_stock.empty:
                 item_options = [""] + [f"{row['كود المنتج']} - {row['اسم المنتج']}" for _, row in df_stock.iterrows()]
-                chosen_item = st.selectbox("اختر المنتج من قائمة المخزون:", options=item_options)
+                chosen_item = st.selectbox("اختر المنتج من المخزون:", options=item_options)
                 
                 if chosen_item:
                     selected_code = chosen_item.split(" - ")[0]
@@ -221,8 +226,8 @@ else:
                 st.info("لا توجد منتجات في المخزون بعد.")
 
         with col_prod2:
-            p_code_input = st.text_input("كود المنتج", value=selected_code)
-            p_name_input = st.text_input("اسم المنتج", value=selected_name)
+            p_code_input = st.text_input("كود المنتج", value=selected_code, key="sale_code_in")
+            p_name_input = st.text_input("اسم المنتج", value=selected_name, key="sale_name_in")
 
         col_qty1, col_qty2 = st.columns(2)
         with col_qty1:
@@ -265,7 +270,7 @@ else:
                 "صافي الربح": qty * (sell_price - cost_price),
                 "الموظف": st.session_state.user_name
             })
-            st.success("تم تسجيل عملية البيع وخصم الكمية من المخزون بنجاح!")
+            st.success("تم تسجيل عملية البيع بنجاح!")
             st.rerun()
 
         st.markdown("---")
@@ -276,7 +281,7 @@ else:
 
             if st.session_state.role == "admin":
                 st.markdown("---")
-                st.markdown("##### 🔴 إلغاء / حذف عملية بيع من السجل (خاص بالمدير فقط):")
+                st.markdown("##### 🔴 إلغاء / حذف عملية بيع:")
                 sale_options = [f"عملية رقم {idx+1}: [{row['كود المنتج']}] {row['اسم المنتج']} - {row['إجمالي البيع']} ج.م ({row['الموظف']})" for idx, row in sales_df.iterrows()]
                 selected_sale_to_delete = st.selectbox("اختر عملية البيع المراد إلغائها:", options=[""] + sale_options)
 
@@ -295,7 +300,7 @@ else:
                                 df_stock.to_excel(EXCEL_FILE, index=False)
 
                         st.session_state.sales_history.pop(sale_idx)
-                        st.success("تم إلغاء عملية البيع وإعادة الكمية للمخزون بنجاح!")
+                        st.success("تم إلغاء عملية البيع وإعادة الكمية للمخزون!")
                         st.rerun()
                     else:
                         st.warning("يرجى اختيار عملية بيع أولاً.")
@@ -304,39 +309,37 @@ else:
         else:
             st.info("لم يتم تسجيل أي عمليات بيع حتى الآن.")
 
-    # 2. إضافة مشتريات (مع التكويد التلقائي)
+    # 2. إضافة مشتريات
     if tab2 and st.session_state.role == "admin":
         with tab2:
-            st.subheader("🛍️ إضافة منتج/شحنة جديدة للمخزون (تكويد تلقائي 3 حروف كابيتال)")
+            st.subheader("📦 إضافة منتج جديد للمخزون")
             
             col_s1, col_s2 = st.columns(2)
             with col_s1:
-                supplier_name = st.text_input("اسم المورد (اختياري)")
+                supplier_name = st.text_input("اسم المورد")
             with col_s2:
-                supplier_phone = st.text_input("رقم هاتف المورد (اختياري)")
+                supplier_phone = st.text_input("رقم هاتف المورد")
                 
             st.markdown("---")
             col_p1, col_p2, col_p3 = st.columns(3)
             
             with col_p1:
-                p_name = st.text_input("اسم المنتج بالعربي (مثال: بادي سبلاش لافندر / طرحة شيفون)")
+                p_name = st.text_input("اسم المنتج بالعربي", key="new_p_name")
                 
-                # توليد الكود المكون من 3 حروف بناءً على الكلمة المفتاحيّة المكتوبة
                 auto_prefix = get_auto_code_prefix(p_name) if p_name else "ZAG"
                 suggested_code = f"{auto_prefix}-{101 + len(df_stock)}"
                 
-                p_code = st.text_input("كود المنتج (تم إنشاؤه تلقائياً):", value=suggested_code)
-                st.caption(f"💡 بادئة الكود التلقائي: **{auto_prefix}**")
+                p_code = st.text_input("كود المنتج", value=suggested_code, key="new_p_code")
 
             with col_p2:
-                p_cost = st.number_input("سعر التكلفة (الشراء)", min_value=0.0, value=0.0)
+                p_cost = st.number_input("سعر التكلفة", min_value=0.0, value=0.0)
                 p_price = st.number_input("سعر البيع للجمهور", min_value=0.0, value=0.0)
 
             with col_p3:
-                p_qty = st.number_input("الكمية (المضافة للمخزون)", min_value=0, value=1)
+                p_qty = st.number_input("الكمية", min_value=0, value=1)
                 p_date = st.date_input("تاريخ الشراء", value=datetime.now())
 
-            if st.button("➕ إضافة للمخزون Direct", type="primary"):
+            if st.button("➕ إضافة للمخزون", type="primary"):
                 final_name = p_name.strip() if p_name.strip() else "منتج جديد بدون اسم"
                 final_code = p_code.strip() if p_code.strip() else suggested_code
 
@@ -350,12 +353,12 @@ else:
                 }
                 df_stock = pd.concat([df_stock, pd.DataFrame([new_row])], ignore_index=True)
                 df_stock.to_excel(EXCEL_FILE, index=False)
-                st.success(f"تمت إضافة المنتج ({final_name}) بنجاح بالكود: [{final_code}]!")
+                st.success(f"تمت إضافة المنتج ({final_name}) بنجاح!")
                 st.rerun()
 
     # 3. إدارة المخزون والجرد
     with tab3:
-        st.subheader("📋 جدول جرد المخزون والمنتجات الحالية")
+        st.subheader("📋 جدول جرد المخزون")
         
         if not df_stock.empty:
             if st.session_state.role == "cashier":
@@ -365,13 +368,13 @@ else:
                 st.dataframe(df_stock, use_container_width=True)
 
                 st.markdown("---")
-                st.subheader("🗑️ قسم حذف وإدارة المخزون (خاص بالمدير)")
+                st.subheader("🗑️ قسم حذف وإدارة المخزون")
                 col_del1, col_del2 = st.columns(2)
                 
                 with col_del1:
-                    st.markdown("##### 🔴 حذف منتج محدد من الجدول:")
+                    st.markdown("##### 🔴 حذف منتج محدد:")
                     delete_options = [f"{row['كود المنتج']} - {row['اسم المنتج']}" for _, row in df_stock.iterrows()]
-                    item_to_delete = st.selectbox("اختر المنتج المراد حذفه نهائياً:", options=[""] + delete_options)
+                    item_to_delete = st.selectbox("اختر المنتج المراد حذفه:", options=[""] + delete_options)
                     
                     if st.button("حذف المنتج المحدد"):
                         if item_to_delete:
@@ -384,10 +387,10 @@ else:
                             st.warning("يرجى اختيار منتج أولاً.")
 
                 with col_del2:
-                    st.markdown("##### 🚨 تفريغ المخزون بالكامل (إعادة ضبط الجرد):")
+                    st.markdown("##### 🚨 تفريغ المخزون بالكامل:")
                     if st.button("مسح كافة منتجات المخزون"):
                         init_empty_excel()
-                        st.success("تم مسح المخزون وإعادة الضبط ليكون فارغاً تماماً!")
+                        st.success("تم مسح المخزون بنجاح!")
                         st.rerun()
         else:
             st.info("المخزون فارغ حالياً.")
@@ -395,7 +398,7 @@ else:
     # 4. التقارير المالية والتحميل بـ PDF
     if tab4 and st.session_state.role == "admin":
         with tab4:
-            st.subheader("📊 نظام التقارير المالية والأرباح والجرد الشامل")
+            st.subheader("📊 التقارير المالية والأرباح")
             
             pdf_today_rev = 0.0
             pdf_today_profit = 0.0
@@ -465,15 +468,15 @@ else:
                 expected_stock_profit = pdf_stock_sale - pdf_stock_cost
 
                 k1, k2, k3 = st.columns(3)
-                k1.metric("رأس المال المستثمر (بالتكلفة)", f"{pdf_stock_cost:,.2f} ج.م")
+                k1.metric("رأس المال المستثمر", f"{pdf_stock_cost:,.2f} ج.م")
                 k2.metric("القيمة البيعية الكلية للمخزون", f"{pdf_stock_sale:,.2f} ج.م")
                 k3.metric("الأرباح المتوقعة عند بيع المخزون", f"{expected_stock_profit:,.2f} ج.م")
             else:
-                st.info("المخزون فارغ حالياً، لا تتوفر تقييمات مالية لرأس المال.")
+                st.info("المخزون فارغ حالياً.")
 
             st.markdown("---")
 
-            st.markdown("### 📄 تصدير وحفظ التقرير المالي بصيغة PDF")
+            st.markdown("### 📄 تصدير التقرير المالي")
             pdf_data = generate_pdf_report(pdf_today_rev, pdf_today_profit, pdf_month_rev, pdf_month_profit, pdf_stock_cost, pdf_stock_sale)
             
             st.download_button(
@@ -486,13 +489,13 @@ else:
 
             st.markdown("---")
 
-            st.markdown("### ⚠️ جرد النواقص المنتجات التي أوشكت على النفاد")
+            st.markdown("### ⚠️ جرد النواقص")
             if not df_stock.empty:
                 low_stock = df_stock[df_stock["الكمية المتاحة"] <= 5]
                 if not low_stock.empty:
-                    st.warning("الأصناف التالية وصل رصيدها إلى 5 قطع أو أقل وتحتاج إلى إعادة طلب وشراء فورية:")
+                    st.warning("الأصناف التالية وصل رصيدها إلى 5 قطع أو أقل:")
                     st.dataframe(low_stock[["كود المنتج", "اسم المنتج", "الكمية المتاحة", "سعر البيع"]], use_container_width=True)
                 else:
-                    st.success("جميع الأصناف متوفرة بكميات آمنة داخل المخزون (أكثر من 5 قطع).")
+                    st.success("جميع الأصناف متوفرة بكميات آمنة داخل المخزون.")
             else:
                 st.info("المخزون فارغ حالياً.")
