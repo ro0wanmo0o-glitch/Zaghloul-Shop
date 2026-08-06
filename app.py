@@ -31,6 +31,8 @@ if not os.path.exists(EXCEL_FILE):
     init_empty_excel()
 
 def normalize_arabic(text):
+    if not text:
+        return ""
     text = re.sub(r"[إأآا]", "ا", text)
     text = re.sub(r"ى", "ي", text)
     text = re.sub(r"ؤ", "و", text)
@@ -81,6 +83,18 @@ def get_auto_code_prefix(product_name):
             return code
             
     return "ZAG"
+
+def update_product_code():
+    p_name = st.session_state.get("new_p_name_input", "")
+    prefix = get_auto_code_prefix(p_name)
+    
+    try:
+        df_temp = pd.read_excel(EXCEL_FILE)
+        count = len(df_temp) + 101
+    except Exception:
+        count = 101
+        
+    st.session_state["new_p_code_input"] = f"{prefix}-{count}"
 
 def generate_pdf_report(today_rev, today_profit, month_rev, month_profit, stock_cost, stock_sale):
     buffer = io.BytesIO()
@@ -323,13 +337,12 @@ else:
             st.markdown("---")
             col_p1, col_p2, col_p3 = st.columns(3)
             
+            if "new_p_code_input" not in st.session_state:
+                st.session_state["new_p_code_input"] = f"ZAG-{101 + len(df_stock)}"
+
             with col_p1:
-                p_name = st.text_input("اسم المنتج بالعربي", key="new_p_name")
-                
-                auto_prefix = get_auto_code_prefix(p_name) if p_name else "ZAG"
-                suggested_code = f"{auto_prefix}-{101 + len(df_stock)}"
-                
-                p_code = st.text_input("كود المنتج", value=suggested_code, key="new_p_code")
+                p_name = st.text_input("اسم المنتج بالعربي", key="new_p_name_input", on_change=update_product_code)
+                p_code = st.text_input("كود المنتج", key="new_p_code_input")
 
             with col_p2:
                 p_cost = st.number_input("سعر التكلفة", min_value=0.0, value=0.0)
@@ -341,7 +354,7 @@ else:
 
             if st.button("➕ إضافة للمخزون", type="primary"):
                 final_name = p_name.strip() if p_name.strip() else "منتج جديد بدون اسم"
-                final_code = p_code.strip() if p_code.strip() else suggested_code
+                final_code = p_code.strip() if p_code.strip() else st.session_state["new_p_code_input"]
 
                 new_row = {
                     "كود المنتج": final_code,
@@ -353,6 +366,9 @@ else:
                 }
                 df_stock = pd.concat([df_stock, pd.DataFrame([new_row])], ignore_index=True)
                 df_stock.to_excel(EXCEL_FILE, index=False)
+                
+                # إعادة ضبط الكود بعد الحفظ
+                st.session_state["new_p_code_input"] = f"ZAG-{101 + len(df_stock)}"
                 st.success(f"تمت إضافة المنتج ({final_name}) بنجاح!")
                 st.rerun()
 
