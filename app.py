@@ -1,3 +1,6 @@
+تفضلي، تم تعديل شاشة المبيعات للجميع (المدير والموظفين).
+الآن بمجرد كتابة أول حرف أو حروف في خانة البحث/اختيار المنتج، ستظهر لكِ قائمة منسدلة بجميع المنتجات التي تحتوي أو تبدأ بهذه الحروف. وبمجرد اختيار المنتج، يتم ملء خانة الكود وسعر البيع وسعر التكلفة تلقائياً.
+انسخي الكود المحدث بالكامل واستبدلي به محتوى ملف app.py:
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -224,15 +227,19 @@ else:
 
         with col_prod1:
             if not df_stock.empty:
-                item_options = [""] + [f"{row['كود المنتج']} - {row['اسم المنتج']}" for _, row in df_stock.iterrows()]
-                chosen_item = st.selectbox("اختر المنتج من المخزون:", options=item_options)
+                # إنشاء قائمة بالأسماء والرموز مع إمكانية البحث الفوري بحروف الاسم
+                item_options = [""] + [f"{row['اسم المنتج']} (كود: {row['كود المنتج']})" for _, row in df_stock.iterrows()]
+                chosen_item = st.selectbox("ابحث عن اسم المنتج (اكتب أول حرف أو حروف):", options=item_options, key="sale_product_select")
                 
                 if chosen_item:
-                    selected_code = chosen_item.split(" - ")[0]
-                    match = df_stock[df_stock["كود المنتج"] == selected_code]
+                    # استخراج اسم المنتج والكود المقابل له
+                    selected_name = chosen_item.split(" (كود: ")[0]
+                    extracted_code = chosen_item.split(" (كود: ")[1].replace(")", "").strip()
+                    
+                    match = df_stock[df_stock["كود المنتج"] == extracted_code]
                     if not match.empty:
                         idx = match.index[0]
-                        selected_name = df_stock.at[idx, "اسم المنتج"]
+                        selected_code = extracted_code
                         cost_price = float(df_stock.at[idx, "سعر الشراء (التكلفة)"])
                         sell_price = float(df_stock.at[idx, "سعر البيع"])
                         available_qty = int(df_stock.at[idx, "الكمية المتاحة"])
@@ -240,14 +247,16 @@ else:
                 st.info("لا توجد منتجات في المخزون بعد.")
 
         with col_prod2:
-            p_code_input = st.text_input("كود المنتج", value=selected_code, key="sale_code_in")
-            p_name_input = st.text_input("اسم المنتج", value=selected_name, key="sale_name_in")
+            st.text_input("اسم المنتج المحدد", value=selected_name, key="sale_name_in", disabled=True)
+            st.text_input("كود المنتج تلقائياً", value=selected_code, key="sale_code_in", disabled=True)
 
         col_qty1, col_qty2 = st.columns(2)
         with col_qty1:
             qty = st.number_input("الكمية المباعة", min_value=1, value=1)
             if available_qty > 0:
                 st.caption(f"الكمية المتاحة حالياً بالمخزون: **{available_qty}** قطعة")
+            elif chosen_item and available_qty == 0:
+                st.error("⚠️ هذا المنتج نفد بالكامل من المخزون!")
         with col_qty2:
             if st.session_state.role == "admin":
                 sale_date = st.date_input("تاريخ الفاتورة", value=datetime.now())
@@ -256,8 +265,8 @@ else:
                 st.info(f"تاريخ الفاتورة: {sale_date}")
 
         if st.button("💾 تسجيل عملية البيع", type="primary"):
-            final_code = p_code_input.strip() if p_code_input.strip() else "بدون كود"
-            final_name = p_name_input.strip() if p_name_input.strip() else "منتج غير مسمى"
+            final_code = selected_code.strip() if selected_code.strip() else "بدون كود"
+            final_name = selected_name.strip() if selected_name.strip() else "منتج غير مسمى"
             
             if final_code != "بدون كود":
                 match_idx = df_stock[df_stock["كود المنتج"] == final_code].index
@@ -367,7 +376,6 @@ else:
                 df_stock = pd.concat([df_stock, pd.DataFrame([new_row])], ignore_index=True)
                 df_stock.to_excel(EXCEL_FILE, index=False)
                 
-                # إعادة ضبط الكود بعد الحفظ
                 st.session_state["new_p_code_input"] = f"ZAG-{101 + len(df_stock)}"
                 st.success(f"تمت إضافة المنتج ({final_name}) بنجاح!")
                 st.rerun()
@@ -515,3 +523,4 @@ else:
                     st.success("جميع الأصناف متوفرة بكميات آمنة داخل المخزون.")
             else:
                 st.info("المخزون فارغ حالياً.")
+
