@@ -108,6 +108,7 @@ def get_auto_code_prefix(product_name):
         ("معصم", "SLV"),
         ("اكسسوارات لانجري", "BSA"),
         ("توكة", "HAR"),
+        ("خلخال", "ANK"),
         ("طقم توك", "HAR"),
         ("واكس", "WAX"),
         ("Wax", "WAX"),
