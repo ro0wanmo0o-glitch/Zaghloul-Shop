@@ -24,25 +24,40 @@ if "logged_in" not in st.session_state:
 if "sales_history" not in st.session_state:
     st.session_state.sales_history = []
 
+def normalize_arabic(text):
+    if not text:
+        return ""
+    text = re.sub(r"[إأآا]", "ا", text)
+    text = re.sub(r"ى", "ي", text)
+    text = re.sub(r"ؤ", "و", text)
+    text = re.sub(r"ئ", "ي", text)
+    text = re.sub(r"ة", "ه", text)
+    return text.strip().lower()
+
 def sort_stock_df(df):
-    """ترتيب جدول المخزون حسب الكود (الكلمة الحرفية أولاً ثم الرقم تسلسلياً)"""
+    """ترتيب جدول المخزون حسب البادئة الكودية أبجديًا، ثم رقم الكود، ثم اسم المنتج أبجديًا"""
     if df.empty or "كود المنتج" not in df.columns:
         return df
     
     df_sorted = df.copy()
     
-    def extract_sort_keys(code):
-        code_str = str(code).strip()
+    def extract_sort_keys(row):
+        code_str = str(row.get("كود المنتج", "")).strip()
+        product_name = normalize_arabic(str(row.get("اسم المنتج", "")))
+        
         parts = code_str.split("-")
         prefix = parts[0]
         num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
-        return (prefix, num)
+        
+        return (prefix, num, product_name)
 
-    keys = df_sorted["كود المنتج"].apply(extract_sort_keys)
+    keys = df_sorted.apply(extract_sort_keys, axis=1)
     df_sorted["_prefix"] = [k[0] for k in keys]
     df_sorted["_num"] = [k[1] for k in keys]
+    df_sorted["_norm_name"] = [k[2] for k in keys]
     
-    df_sorted = df_sorted.sort_values(by=["_prefix", "_num"]).drop(columns=["_prefix", "_num"]).reset_index(drop=True)
+    # الفرز المزدوج: الكود أولاً ثم اسم المنتج أبجدياً
+    df_sorted = df_sorted.sort_values(by=["_prefix", "_num", "_norm_name"]).drop(columns=["_prefix", "_num", "_norm_name"]).reset_index(drop=True)
     return df_sorted
 
 def init_empty_excel():
@@ -68,16 +83,6 @@ if not os.path.exists(SUPPLIERS_FILE):
 
 if not os.path.exists(CUSTOMERS_FILE):
     init_customers_excel()
-
-def normalize_arabic(text):
-    if not text:
-        return ""
-    text = re.sub(r"[إأآا]", "ا", text)
-    text = re.sub(r"ى", "ي", text)
-    text = re.sub(r"ؤ", "و", text)
-    text = re.sub(r"ئ", "ي", text)
-    text = re.sub(r"ة", "ه", text)
-    return text.strip().lower()
 
 def get_auto_code_prefix(product_name):
     p_name = normalize_arabic(product_name)
@@ -126,6 +131,7 @@ def get_auto_code_prefix(product_name):
 def generate_sequential_code(product_name, df_stock_current):
     prefix = get_auto_code_prefix(product_name)
     
+    # يبدأ العد التسلسلي لكل فئة مستقلة من 100 ليكون أول منتج 101
     max_num = 100
     if not df_stock_current.empty and "كود المنتج" in df_stock_current.columns:
         existing_codes = df_stock_current["كود المنتج"].astype(str).tolist()
@@ -450,7 +456,7 @@ else:
 
             with col_p1:
                 p_name = st.text_input("اسم المنتج بالعربي")
-                p_code_custom = st.text_input("كود المنتج (اتركه فارغاً للتوليد التلقائي والتسلسلي)", help="اتركه فارغاً لإنشاء كود تلقائي مثل BSP-101 ثم BSP-102")
+                p_code_custom = st.text_input("كود المنتج (اتركه فارغاً للتوليد التلقائي المستقل لكل فئة)", help="مثال: البرفان سيبدأ بـ PRF-101 والمخمرية بـ MKH-101")
 
             with col_p2:
                 p_cost = st.number_input("سعر التكلفة", min_value=0.0, value=0.0)
@@ -480,7 +486,7 @@ else:
                     }
                     df_stock = pd.concat([df_stock, pd.DataFrame([new_row])], ignore_index=True)
                     
-                    # إعادة الفرز والترتيب حسب الكود
+                    # إعادة الفرز المزدوج المحدث
                     df_stock = sort_stock_df(df_stock)
                     df_stock.to_excel(EXCEL_FILE, index=False)
 
@@ -493,19 +499,19 @@ else:
                         df_suppliers = pd.concat([df_suppliers, pd.DataFrame([new_sup])], ignore_index=True)
                         df_suppliers.to_excel(SUPPLIERS_FILE, index=False)
 
-                    st.success(f"تمت إضافة المنتج ({final_name}) وترتيب المخزون بنجاح بالكود ({final_code})!")
+                    st.success(f"تمت إضافة المنتج ({final_name}) وترتيب المخزون كودياً وأبجدياً بالكود ({final_code})!")
                     st.rerun()
 
     # 3. إدارة المخزون والجرد
     with tab3:
-        st.subheader("📋 جدول جرد وتعديل المخزون (مرتب كودياً تلقائياً)")
+        st.subheader("📋 جدول جرد وتعديل المخزون (مرتب كودياً وأبجدياً)")
         
         if not df_stock.empty:
             if st.session_state.role == "cashier":
                 cols_to_show = [c for c in df_stock.columns if "التكلفة" not in c and "الشراء" not in c]
                 st.dataframe(df_stock[cols_to_show], use_container_width=True)
             else:
-                st.info("💡 **طريقة التعديل المباشر:** اضغط على الخلية المراد تعديلها، ثم اضغط زر **'حفظ التعديلات'** بالأسفل ليتم الترتيب وتحديث البيانات.")
+                st.info("💡 **طريقة التعديل المباشر:** اضغط على الخلية المراد تعديلها، ثم اضغط زر **'حفظ التعديلات'** بالأسفل ليتم إعادة الترتيب الأبجدي والكودي وتحديث البيانات.")
                 
                 edited_df = st.data_editor(
                     df_stock,
@@ -518,7 +524,7 @@ else:
                 if st.button("💾 حفظ التعديلات على المخزون", type="primary"):
                     edited_df = sort_stock_df(edited_df)
                     edited_df.to_excel(EXCEL_FILE, index=False)
-                    st.success("تم تحديث المخزون وإعادة ترتيبه كودياً بنجاح!")
+                    st.success("تم تحديث المخزون وإعادة ترتيبه بنجاح!")
                     st.rerun()
 
                 st.markdown("---")
