@@ -12,6 +12,7 @@ from reportlab.lib import colors
 
 EXCEL_FILE = "Items Body Care.xlsx"
 SUPPLIERS_FILE = "Suppliers.xlsx"
+CUSTOMERS_FILE = "Customers.xlsx"
 
 st.set_page_config(page_title="ZAGHLOUL - World Of Care", page_icon="🛍️", layout="wide")
 
@@ -33,11 +34,19 @@ def init_suppliers_excel():
     df_empty = pd.DataFrame(columns=columns)
     df_empty.to_excel(SUPPLIERS_FILE, index=False)
 
+def init_customers_excel():
+    columns = ["اسم العميل", "رقم الهاتف", "تاريخ التسجيل", "الموظف المسجل"]
+    df_empty = pd.DataFrame(columns=columns)
+    df_empty.to_excel(CUSTOMERS_FILE, index=False)
+
 if not os.path.exists(EXCEL_FILE):
     init_empty_excel()
 
 if not os.path.exists(SUPPLIERS_FILE):
     init_suppliers_excel()
+
+if not os.path.exists(CUSTOMERS_FILE):
+    init_customers_excel()
 
 def normalize_arabic(text):
     if not text:
@@ -202,6 +211,11 @@ else:
     except Exception:
         df_suppliers = pd.DataFrame(columns=["اسم المورد", "رقم الهاتف", "ملاحظات / الأصناف الموردة"])
 
+    try:
+        df_customers = pd.read_excel(CUSTOMERS_FILE)
+    except Exception:
+        df_customers = pd.DataFrame(columns=["اسم العميل", "رقم الهاتف", "تاريخ التسجيل", "الموظف المسجل"])
+
     if not df_stock.empty and "الكمية المتاحة" in df_stock.columns:
         low_stock_items = df_stock[df_stock["الكمية المتاحة"] <= 5]
         if not low_stock_items.empty:
@@ -221,13 +235,31 @@ else:
 
     # 1. شاشة المبيعات
     with tab1:
-        st.subheader("تسجيل فاتورة بيع جديدة")
+        st.subheader("تسجيل فاتورة بيع جديدة وحفظ العميل")
         col_c1, col_c2 = st.columns(2)
         with col_c1:
             customer_name = st.text_input("اسم المشتري / العميل", value="عميل نقدي")
         with col_c2:
             customer_phone = st.text_input("رقم هاتف العميل", value="")
             
+        if st.button("💾 تسجيل/حفظ بيانات العميل فقط"):
+            c_name_clean = customer_name.strip()
+            c_phone_clean = customer_phone.strip()
+            
+            if c_name_clean and c_name_clean != "عميل نقدي":
+                new_cust = {
+                    "اسم العميل": c_name_clean,
+                    "رقم الهاتف": c_phone_clean,
+                    "تاريخ التسجيل": str(datetime.now().strftime("%Y-%m-%d %H:%M")),
+                    "الموظف المسجل": st.session_state.user_name
+                }
+                df_customers = pd.concat([df_customers, pd.DataFrame([new_cust])], ignore_index=True)
+                df_customers.to_excel(CUSTOMERS_FILE, index=False)
+                st.success(f"تم تسجيل وحفظ العميل ({c_name_clean}) بنجاح لتصل تلقائياً لسجل المدير!")
+                st.rerun()
+            else:
+                st.warning("يرجى إدخال اسم عميل صحيح للتسجيل.")
+
         st.markdown("---")
         
         chosen_item = ""
@@ -293,10 +325,23 @@ else:
                     df_stock.at[idx, "الكمية المتاحة"] = new_qty
                     df_stock.to_excel(EXCEL_FILE, index=False)
 
+                c_name_clean = customer_name.strip() if customer_name.strip() else "عميل نقدي"
+                c_phone_clean = customer_phone.strip()
+
+                if c_name_clean != "عميل نقدي":
+                    new_cust = {
+                        "اسم العميل": c_name_clean,
+                        "رقم الهاتف": c_phone_clean,
+                        "تاريخ التسجيل": str(datetime.now().strftime("%Y-%m-%d %H:%M")),
+                        "الموظف المسجل": st.session_state.user_name
+                    }
+                    df_customers = pd.concat([df_customers, pd.DataFrame([new_cust])], ignore_index=True)
+                    df_customers.to_excel(CUSTOMERS_FILE, index=False)
+
                 st.session_state.sales_history.append({
                     "التاريخ": str(sale_date),
-                    "العميل": customer_name if customer_name.strip() else "عميل نقدي",
-                    "رقم الهاتف": customer_phone.strip(),
+                    "العميل": c_name_clean,
+                    "رقم الهاتف": c_phone_clean,
                     "كود المنتج": final_code,
                     "اسم المنتج": final_name,
                     "الكمية": qty,
@@ -306,7 +351,7 @@ else:
                     "صافي الربح": qty * (sell_price - cost_price),
                     "الموظف": st.session_state.user_name
                 })
-                st.success("تم تسجيل عملية البيع بنجاح!")
+                st.success("تم تسجيل عملية البيع وحفظ بيانات العميل بنجاح!")
                 st.rerun()
 
         st.markdown("---")
@@ -605,16 +650,24 @@ else:
             col_tab_a, col_tab_b = st.columns(2)
             
             with col_tab_a:
-                st.markdown("### 📞 دليل وسجل العملاء")
-                if st.session_state.sales_history:
-                    df_cust = pd.DataFrame(st.session_state.sales_history)
-                    df_cust_summary = df_cust.groupby(["العميل", "رقم الهاتف"]).agg(
-                        عدد_الفواتير=("إجمالي البيع", "count"),
-                        إجمالي_المشتريات=("إجمالي البيع", "sum")
-                    ).reset_index()
-                    st.dataframe(df_cust_summary, use_container_width=True)
+                st.markdown("### 📞 دليل وسجل العملاء المسجلين")
+                if not df_customers.empty:
+                    st.dataframe(df_customers, use_container_width=True)
+                    
+                    st.markdown("---")
+                    st.markdown("##### 🔴 حذف عميل من السجل:")
+                    cust_list = [f"{idx+1}: {row['اسم العميل']} ({row['رقم الهاتف']})" for idx, row in df_customers.iterrows()]
+                    selected_cust_del = st.selectbox("اختر العميل المراد حذفه:", options=[""] + cust_list)
+                    
+                    if st.button("حذف العميل المحدد"):
+                        if selected_cust_del:
+                            cust_idx = int(selected_cust_del.split(":")[0]) - 1
+                            df_customers = df_customers.drop(cust_idx).reset_index(drop=True)
+                            df_customers.to_excel(CUSTOMERS_FILE, index=False)
+                            st.success("تم حذف العميل بنجاح!")
+                            st.rerun()
                 else:
-                    st.info("لم يتم تسجيل بيانات أي عملاء حتى الآن.")
+                    st.info("لا يوجد عملاء مسجلين حالياً في ملف البيانات.")
                     
             with col_tab_b:
                 st.markdown("### 🏢 دليل وسجل الموردين")
