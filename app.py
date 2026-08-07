@@ -425,14 +425,37 @@ else:
 
     # 3. إدارة المخزون والجرد
     with tab3:
-        st.subheader("📋 جدول جرد المخزون")
+        st.subheader("📋 جدول جرد وتعديل المخزون")
         
         if not df_stock.empty:
             if st.session_state.role == "cashier":
                 cols_to_show = [c for c in df_stock.columns if "التكلفة" not in c and "الشراء" not in c]
                 st.dataframe(df_stock[cols_to_show], use_container_width=True)
             else:
-                st.dataframe(df_stock, use_container_width=True)
+                st.info("💡 **طريقة التعديل المباشر:** اضغط على الخلية المراد تعديلها (اسم المنتج، السعر، أو الكمية)، ثم اضغط زر **'حفظ التعديلات'** بالأسفل ليتم تحديث الكود والبيانات تلقائياً.")
+                
+                edited_df = st.data_editor(
+                    df_stock,
+                    use_container_width=True,
+                    num_rows="dynamic",
+                    disabled=["تاريخ الإضافة"],
+                    key="stock_editor"
+                )
+
+                if st.button("💾 حفظ التعديلات على المخزون", type="primary"):
+                    for idx, row in edited_df.iterrows():
+                        old_code = str(df_stock.at[idx, "كود المنتج"]) if idx < len(df_stock) else ""
+                        old_num = old_code.split("-")[-1] if "-" in old_code else str(101 + idx)
+                        
+                        p_name = row["اسم المنتج"]
+                        prefix = get_auto_code_prefix(p_name)
+                        new_auto_code = f"{prefix}-{old_num}"
+                        
+                        edited_df.at[idx, "كود المنتج"] = new_auto_code
+
+                    edited_df.to_excel(EXCEL_FILE, index=False)
+                    st.success("تم تحديث وحفظ بيانات المخزون وتغيير الأكواد تلقائياً بنجاح!")
+                    st.rerun()
 
                 st.markdown("---")
                 st.subheader("🗑️ قسم حذف وإدارة المخزون")
