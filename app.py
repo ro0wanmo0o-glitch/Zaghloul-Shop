@@ -102,27 +102,20 @@ def get_auto_code_prefix(product_name):
             
     return "ZAG"
 
-def update_product_code():
-    p_name = st.session_state.get("new_p_name_input", "")
-    prefix = get_auto_code_prefix(p_name)
+def generate_sequential_code(product_name, df_stock_current):
+    prefix = get_auto_code_prefix(product_name)
     
-    # الحصول على أعلى رقم مُسجّل مع هذا الكود الحرفي لضمان الترتيب التلقائي المتتابع
-    try:
-        df_temp = pd.read_excel(EXCEL_FILE)
-        existing_codes = df_temp["كود المنتج"].astype(str).tolist()
-        
-        max_num = 100
+    max_num = 100
+    if not df_stock_current.empty and "كود المنتج" in df_stock_current.columns:
+        existing_codes = df_stock_current["كود المنتج"].astype(str).tolist()
         for code in existing_codes:
             if code.startswith(f"{prefix}-"):
                 parts = code.split("-")
                 if len(parts) > 1 and parts[1].isdigit():
                     max_num = max(max_num, int(parts[1]))
-        
-        next_num = max_num + 1
-    except Exception:
-        next_num = 101
-        
-    st.session_state["new_p_code_input"] = f"{prefix}-{next_num}"
+    
+    next_num = max_num + 1
+    return f"{prefix}-{next_num}"
 
 def generate_pdf_report(today_rev, today_profit, month_rev, month_profit, stock_cost, stock_sale, total_actual_profit):
     buffer = io.BytesIO()
@@ -400,7 +393,7 @@ else:
         else:
             st.info("لم يتم تسجيل أي عمليات بيع حتى الآن.")
 
-    # 2. إضافة مشتريات (مع دعم الأكواد المحدثة)
+    # 2. إضافة مشتريات (مع الترقيم التسلسلي المضمون)
     if tab2 and st.session_state.role == "admin":
         with tab2:
             st.subheader("📦 إضافة منتج جديد للمخزون")
@@ -429,14 +422,10 @@ else:
 
             st.markdown("---")
             col_p1, col_p2, col_p3 = st.columns(3)
-            
-            default_code = f"ZAG-{101 + len(df_stock)}"
-            if "new_p_code_input" not in st.session_state:
-                st.session_state["new_p_code_input"] = default_code
 
             with col_p1:
-                p_name = st.text_input("اسم المنتج بالعربي", key="new_p_name_input", on_change=update_product_code)
-                p_code = st.text_input("كود المنتج التلقائي", key="new_p_code_input")
+                p_name = st.text_input("اسم المنتج بالعربي")
+                p_code_custom = st.text_input("كود المنتج (اتركه فارغاً للتوليد التلقائي والتسلسلي)", help="اتركه فارغاً لإنشاء كود تلقائي مثل BSP-101 ثم BSP-102")
 
             with col_p2:
                 p_cost = st.number_input("سعر التكلفة", min_value=0.0, value=0.0)
@@ -447,36 +436,38 @@ else:
                 p_date = st.date_input("تاريخ الشراء", value=datetime.now())
 
             if st.button("➕ إضافة المنتج للمخزون", type="primary"):
-                final_name = p_name.strip() if p_name.strip() else "منتج جديد بدون اسم"
-                final_code = p_code.strip() if p_code.strip() else st.session_state.get("new_p_code_input", default_code)
+                final_name = p_name.strip()
+                if not final_name:
+                    st.error("يرجى إدخال اسم المنتج بالعربي أولاً!")
+                else:
+                    # تحديد الكود النهائي (تلقائي تسلسلي أو يدوي)
+                    if p_code_custom.strip():
+                        final_code = p_code_custom.strip()
+                    else:
+                        final_code = generate_sequential_code(final_name, df_stock)
 
-                new_row = {
-                    "كود المنتج": final_code,
-                    "اسم المنتج": final_name,
-                    "سعر الشراء (التكلفة)": p_cost,
-                    "سعر البيع": p_price,
-                    "الكمية المتاحة": p_qty,
-                    "تاريخ الإضافة": str(p_date)
-                }
-                df_stock = pd.concat([df_stock, pd.DataFrame([new_row])], ignore_index=True)
-                df_stock.to_excel(EXCEL_FILE, index=False)
-
-                if supplier_name.strip():
-                    new_sup = {
-                        "اسم المورد": supplier_name.strip(),
-                        "رقم الهاتف": supplier_phone.strip(),
-                        "ملاحظات / الأصناف الموردة": f"توريد: {final_name} - {supplier_notes.strip()}".strip(" -")
+                    new_row = {
+                        "كود المنتج": final_code,
+                        "اسم المنتج": final_name,
+                        "سعر الشراء (التكلفة)": p_cost,
+                        "سعر البيع": p_price,
+                        "الكمية المتاحة": p_qty,
+                        "تاريخ الإضافة": str(p_date)
                     }
-                    df_suppliers = pd.concat([df_suppliers, pd.DataFrame([new_sup])], ignore_index=True)
-                    df_suppliers.to_excel(SUPPLIERS_FILE, index=False)
+                    df_stock = pd.concat([df_stock, pd.DataFrame([new_row])], ignore_index=True)
+                    df_stock.to_excel(EXCEL_FILE, index=False)
 
-                if "new_p_name_input" in st.session_state:
-                    del st.session_state["new_p_name_input"]
-                if "new_p_code_input" in st.session_state:
-                    del st.session_state["new_p_code_input"]
-                    
-                st.success(f"تمت إضافة المنتج ({final_name}) بنجاح بالكود ({final_code})!")
-                st.rerun()
+                    if supplier_name.strip():
+                        new_sup = {
+                            "اسم المورد": supplier_name.strip(),
+                            "رقم الهاتف": supplier_phone.strip(),
+                            "ملاحظات / الأصناف الموردة": f"توريد: {final_name} - {supplier_notes.strip()}".strip(" -")
+                        }
+                        df_suppliers = pd.concat([df_suppliers, pd.DataFrame([new_sup])], ignore_index=True)
+                        df_suppliers.to_excel(SUPPLIERS_FILE, index=False)
+
+                    st.success(f"تمت إضافة المنتج ({final_name}) بنجاح بالكود التسلسلي ({final_code})!")
+                    st.rerun()
 
     # 3. إدارة المخزون والجرد
     with tab3:
@@ -642,7 +633,7 @@ else:
             else:
                 st.info("المخزون فارغ حالياً.")
 
-    # 5. إدارة الموردين والعملاء (خاصة بالمدير فقط)
+    # 5. إدارة الموردين والعملاء
     if tab5 and st.session_state.role == "admin":
         with tab5:
             st.subheader("👥 إدارة الموردين والعملاء (خـاص بالمدير)")
