@@ -214,6 +214,7 @@ else:
             
         st.markdown("---")
         
+        chosen_item = ""
         selected_code = ""
         selected_name = ""
         cost_price = 0.0
