@@ -343,8 +343,10 @@ else:
             st.markdown("---")
             col_p1, col_p2, col_p3 = st.columns(3)
             
+            # حماية الكود التلقائي من مشاكل التعديل المباشر
+            default_code = f"ZAG-{101 + len(df_stock)}"
             if "new_p_code_input" not in st.session_state:
-                st.session_state["new_p_code_input"] = f"ZAG-{101 + len(df_stock)}"
+                st.session_state["new_p_code_input"] = default_code
 
             with col_p1:
                 p_name = st.text_input("اسم المنتج بالعربي", key="new_p_name_input", on_change=update_product_code)
@@ -360,7 +362,7 @@ else:
 
             if st.button("➕ إضافة للمخزون", type="primary"):
                 final_name = p_name.strip() if p_name.strip() else "منتج جديد بدون اسم"
-                final_code = p_code.strip() if p_code.strip() else st.session_state["new_p_code_input"]
+                final_code = p_code.strip() if p_code.strip() else st.session_state.get("new_p_code_input", default_code)
 
                 new_row = {
                     "كود المنتج": final_code,
@@ -373,7 +375,12 @@ else:
                 df_stock = pd.concat([df_stock, pd.DataFrame([new_row])], ignore_index=True)
                 df_stock.to_excel(EXCEL_FILE, index=False)
                 
-                st.session_state["new_p_code_input"] = f"ZAG-{101 + len(df_stock)}"
+                # إخلاء الحقول بأمان بعد الإضافة
+                if "new_p_name_input" in st.session_state:
+                    del st.session_state["new_p_name_input"]
+                if "new_p_code_input" in st.session_state:
+                    del st.session_state["new_p_code_input"]
+                    
                 st.success(f"تمت إضافة المنتج ({final_name}) بنجاح!")
                 st.rerun()
 
