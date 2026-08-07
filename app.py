@@ -11,6 +11,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
 EXCEL_FILE = "Items Body Care.xlsx"
+SUPPLIERS_FILE = "Suppliers.xlsx"
 
 st.set_page_config(page_title="ZAGHLOUL - World Of Care", page_icon="🛍️", layout="wide")
 
@@ -27,8 +28,16 @@ def init_empty_excel():
     df_empty = pd.DataFrame(columns=columns)
     df_empty.to_excel(EXCEL_FILE, index=False)
 
+def init_suppliers_excel():
+    columns = ["اسم المورد", "رقم الهاتف", "ملاحظات / الأصناف الموردة"]
+    df_empty = pd.DataFrame(columns=columns)
+    df_empty.to_excel(SUPPLIERS_FILE, index=False)
+
 if not os.path.exists(EXCEL_FILE):
     init_empty_excel()
+
+if not os.path.exists(SUPPLIERS_FILE):
+    init_suppliers_excel()
 
 def normalize_arabic(text):
     if not text:
@@ -96,7 +105,7 @@ def update_product_code():
         
     st.session_state["new_p_code_input"] = f"{prefix}-{count}"
 
-def generate_pdf_report(today_rev, today_profit, month_rev, month_profit, stock_cost, stock_sale):
+def generate_pdf_report(today_rev, today_profit, month_rev, month_profit, stock_cost, stock_sale, total_actual_profit):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     styles = getSampleStyleSheet()
@@ -121,6 +130,7 @@ def generate_pdf_report(today_rev, today_profit, month_rev, month_profit, stock_
         ["Today Net Profit", f"{today_profit:,.2f}"],
         ["Current Month Total Sales", f"{month_rev:,.2f}"],
         ["Current Month Net Profit", f"{month_profit:,.2f}"],
+        ["Total Actual Net Sales Profit", f"{total_actual_profit:,.2f}"],
         ["Total Invested Capital (Stock Cost)", f"{stock_cost:,.2f}"],
         ["Total Stock Expected Sales Value", f"{stock_sale:,.2f}"]
     ]
@@ -187,30 +197,36 @@ else:
     except Exception:
         df_stock = pd.DataFrame(columns=["كود المنتج", "اسم المنتج", "سعر الشراء (التكلفة)", "سعر البيع", "الكمية المتاحة", "تاريخ الإضافة"])
 
+    try:
+        df_suppliers = pd.read_excel(SUPPLIERS_FILE)
+    except Exception:
+        df_suppliers = pd.DataFrame(columns=["اسم المورد", "رقم الهاتف", "ملاحظات / الأصناف الموردة"])
+
     if not df_stock.empty and "الكمية المتاحة" in df_stock.columns:
         low_stock_items = df_stock[df_stock["الكمية المتاحة"] <= 5]
         if not low_stock_items.empty:
             st.error(f"🚨 **تنبيه هام:** يوجد ({len(low_stock_items)}) منتجات أوشكت على النفاد!")
 
     if st.session_state.role == "admin":
-        tab1, tab2, tab3, tab4 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
             "🛒 شاشة المبيعات", 
             "📦 إضافة مشتريات جديدة", 
             "📋 إدارة المخزون والجرد", 
-            "📊 التقارير والأرباح والجرد المالي"
+            "📊 التقارير والأرباح والجرد المالي",
+            "👥 إدارة الموردين والعملاء"
         ])
     else:
         tab1, tab3 = st.tabs(["🛒 شاشة المبيعات", "📋 عرض المخزون المتاح"])
-        tab2, tab4 = None, None
+        tab2, tab4, tab5 = None, None, None
 
     # 1. شاشة المبيعات
     with tab1:
         st.subheader("تسجيل فاتورة بيع جديدة")
         col_c1, col_c2 = st.columns(2)
         with col_c1:
-            customer_name = st.text_input("اسم المشتري", value="عميل نقدي")
+            customer_name = st.text_input("اسم المشتري / العميل", value="عميل نقدي")
         with col_c2:
-            customer_phone = st.text_input("رقم الهاتف", value="")
+            customer_phone = st.text_input("رقم هاتف العميل", value="")
             
         st.markdown("---")
         
@@ -279,8 +295,8 @@ else:
 
                 st.session_state.sales_history.append({
                     "التاريخ": str(sale_date),
-                    "العميل": customer_name,
-                    "رقم الهاتف": customer_phone,
+                    "العميل": customer_name if customer_name.strip() else "عميل نقدي",
+                    "رقم الهاتف": customer_phone.strip(),
                     "كود المنتج": final_code,
                     "اسم المنتج": final_name,
                     "الكمية": qty,
@@ -334,16 +350,31 @@ else:
         with tab2:
             st.subheader("📦 إضافة منتج جديد للمخزون")
             
-            col_s1, col_s2 = st.columns(2)
+            col_s1, col_s2, col_s3 = st.columns(3)
             with col_s1:
                 supplier_name = st.text_input("اسم المورد")
             with col_s2:
                 supplier_phone = st.text_input("رقم هاتف المورد")
-                
+            with col_s3:
+                supplier_notes = st.text_input("ملاحظات عن الأصناف الموردة")
+
+            if st.button("💾 حفظ بيانات المورد فقط في السجل"):
+                if supplier_name.strip():
+                    new_sup = {
+                        "اسم المورد": supplier_name.strip(),
+                        "رقم الهاتف": supplier_phone.strip(),
+                        "ملاحظات / الأصناف الموردة": supplier_notes.strip()
+                    }
+                    df_suppliers = pd.concat([df_suppliers, pd.DataFrame([new_sup])], ignore_index=True)
+                    df_suppliers.to_excel(SUPPLIERS_FILE, index=False)
+                    st.success(f"تم حفظ المورد ({supplier_name}) في سجل الموردين!")
+                    st.rerun()
+                else:
+                    st.error("يرجى إدخال اسم المورد أولاً.")
+
             st.markdown("---")
             col_p1, col_p2, col_p3 = st.columns(3)
             
-            # حماية الكود التلقائي من مشاكل التعديل المباشر
             default_code = f"ZAG-{101 + len(df_stock)}"
             if "new_p_code_input" not in st.session_state:
                 st.session_state["new_p_code_input"] = default_code
@@ -360,7 +391,7 @@ else:
                 p_qty = st.number_input("الكمية", min_value=0, value=1)
                 p_date = st.date_input("تاريخ الشراء", value=datetime.now())
 
-            if st.button("➕ إضافة للمخزون", type="primary"):
+            if st.button("➕ إضافة المنتج للمخزون", type="primary"):
                 final_name = p_name.strip() if p_name.strip() else "منتج جديد بدون اسم"
                 final_code = p_code.strip() if p_code.strip() else st.session_state.get("new_p_code_input", default_code)
 
@@ -374,14 +405,22 @@ else:
                 }
                 df_stock = pd.concat([df_stock, pd.DataFrame([new_row])], ignore_index=True)
                 df_stock.to_excel(EXCEL_FILE, index=False)
-                
-                # إخلاء الحقول بأمان بعد الإضافة
+
+                if supplier_name.strip():
+                    new_sup = {
+                        "اسم المورد": supplier_name.strip(),
+                        "رقم الهاتف": supplier_phone.strip(),
+                        "ملاحظات / الأصناف الموردة": f"توريد: {final_name} - {supplier_notes.strip()}".strip(" -")
+                    }
+                    df_suppliers = pd.concat([df_suppliers, pd.DataFrame([new_sup])], ignore_index=True)
+                    df_suppliers.to_excel(SUPPLIERS_FILE, index=False)
+
                 if "new_p_name_input" in st.session_state:
                     del st.session_state["new_p_name_input"]
                 if "new_p_code_input" in st.session_state:
                     del st.session_state["new_p_code_input"]
                     
-                st.success(f"تمت إضافة المنتج ({final_name}) بنجاح!")
+                st.success(f"تمت إضافة المنتج ({final_name}) بنجاح للمخزون!")
                 st.rerun()
 
     # 3. إدارة المخزون والجرد
@@ -434,6 +473,7 @@ else:
             pdf_month_profit = 0.0
             pdf_stock_cost = 0.0
             pdf_stock_sale = 0.0
+            total_actual_profit = 0.0
 
             st.markdown("### 💵 تقرير مبيعات وأرباح اليوم")
             if st.session_state.sales_history:
@@ -485,27 +525,33 @@ else:
 
             st.markdown("---")
 
-            st.markdown("### 💰 تقييم رأس المال والمخزون الحقيقي")
+            st.markdown("### 💰 تقييم رأس المال والمخزون الحقيقي والأرباح")
+            
+            if st.session_state.sales_history:
+                df_all_sales = pd.DataFrame(st.session_state.sales_history)
+                total_actual_profit = float(df_all_sales["صافي الربح"].sum())
+            
             if not df_stock.empty:
                 df_stock["إجمالي قيمة التكلفة"] = df_stock["سعر الشراء (التكلفة)"] * df_stock["الكمية المتاحة"]
                 df_stock["إجمالي قيمة البيع المتوقعة"] = df_stock["سعر البيع"] * df_stock["الكمية المتاحة"]
-                df_stock["الربح المتوقع"] = df_stock["إجمالي قيمة البيع المتوقعة"] - df_stock["إجمالي قيمة التكلفة"]
 
                 pdf_stock_cost = float(df_stock["إجمالي قيمة التكلفة"].sum())
                 pdf_stock_sale = float(df_stock["إجمالي قيمة البيع المتوقعة"].sum())
                 expected_stock_profit = pdf_stock_sale - pdf_stock_cost
 
-                k1, k2, k3 = st.columns(3)
-                k1.metric("رأس المال المستثمر", f"{pdf_stock_cost:,.2f} ج.م")
-                k2.metric("القيمة البيعية الكلية للمخزون", f"{pdf_stock_sale:,.2f} ج.م")
+                k1, k2, k3, k4 = st.columns(4)
+                k1.metric("رأس المال المستثمر بالمخزون", f"{pdf_stock_cost:,.2f} ج.م")
+                k2.metric("القيمة البيعية للمخزون الحالي", f"{pdf_stock_sale:,.2f} ج.م")
                 k3.metric("الأرباح المتوقعة عند بيع المخزون", f"{expected_stock_profit:,.2f} ج.م")
+                k4.metric("🔥 صافي الأرباح الحقيقية للمبيعات", f"{total_actual_profit:,.2f} ج.م")
             else:
+                st.metric("🔥 صافي الأرباح الحقيقية للمبيعات الفعلية", f"{total_actual_profit:,.2f} ج.م")
                 st.info("المخزون فارغ حالياً.")
 
             st.markdown("---")
 
             st.markdown("### 📄 تصدير التقرير المالي")
-            pdf_data = generate_pdf_report(pdf_today_rev, pdf_today_profit, pdf_month_rev, pdf_month_profit, pdf_stock_cost, pdf_stock_sale)
+            pdf_data = generate_pdf_report(pdf_today_rev, pdf_today_profit, pdf_month_rev, pdf_month_profit, pdf_stock_cost, pdf_stock_sale, total_actual_profit)
             
             st.download_button(
                 label="📥 تحميل التقرير المالي (PDF)",
@@ -527,3 +573,42 @@ else:
                     st.success("جميع الأصناف متوفرة بكميات آمنة داخل المخزون.")
             else:
                 st.info("المخزون فارغ حالياً.")
+
+    # 5. إدارة الموردين والعملاء (خاصة بالمدير فقط)
+    if tab5 and st.session_state.role == "admin":
+        with tab5:
+            st.subheader("👥 إدارة الموردين والعملاء (خـاص بالمدير)")
+            
+            col_tab_a, col_tab_b = st.columns(2)
+            
+            with col_tab_a:
+                st.markdown("### 📞 دليل وسجل العملاء")
+                if st.session_state.sales_history:
+                    df_cust = pd.DataFrame(st.session_state.sales_history)
+                    df_cust_summary = df_cust.groupby(["العميل", "رقم الهاتف"]).agg(
+                        عدد_الفواتير=("إجمالي البيع", "count"),
+                        إجمالي_المشتريات=("إجمالي البيع", "sum")
+                    ).reset_index()
+                    st.dataframe(df_cust_summary, use_container_width=True)
+                else:
+                    st.info("لم يتم تسجيل بيانات أي عملاء حتى الآن.")
+                    
+            with col_tab_b:
+                st.markdown("### 🏢 دليل وسجل الموردين")
+                if not df_suppliers.empty:
+                    st.dataframe(df_suppliers, use_container_width=True)
+                    
+                    st.markdown("---")
+                    st.markdown("##### 🔴 حذف مورد من السجل:")
+                    sup_list = [f"{idx+1}: {row['اسم المورد']} ({row['رقم الهاتف']})" for idx, row in df_suppliers.iterrows()]
+                    selected_sup_del = st.selectbox("اختر المورد المراد حذفه:", options=[""] + sup_list)
+                    
+                    if st.button("حذف المورد المحدد"):
+                        if selected_sup_del:
+                            sup_idx = int(selected_sup_del.split(":")[0]) - 1
+                            df_suppliers = df_suppliers.drop(sup_idx).reset_index(drop=True)
+                            df_suppliers.to_excel(SUPPLIERS_FILE, index=False)
+                            st.success("تم حذف المورد بنجاح!")
+                            st.rerun()
+                else:
+                    st.info("لا يوجد موردين مسجلين حالياً.")
