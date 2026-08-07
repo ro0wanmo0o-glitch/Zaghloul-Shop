@@ -106,13 +106,23 @@ def update_product_code():
     p_name = st.session_state.get("new_p_name_input", "")
     prefix = get_auto_code_prefix(p_name)
     
+    # الحصول على أعلى رقم مُسجّل مع هذا الكود الحرفي لضمان الترتيب التلقائي المتتابع
     try:
         df_temp = pd.read_excel(EXCEL_FILE)
-        count = len(df_temp) + 101
-    except Exception:
-        count = 101
+        existing_codes = df_temp["كود المنتج"].astype(str).tolist()
         
-    st.session_state["new_p_code_input"] = f"{prefix}-{count}"
+        max_num = 100
+        for code in existing_codes:
+            if code.startswith(f"{prefix}-"):
+                parts = code.split("-")
+                if len(parts) > 1 and parts[1].isdigit():
+                    max_num = max(max_num, int(parts[1]))
+        
+        next_num = max_num + 1
+    except Exception:
+        next_num = 101
+        
+    st.session_state["new_p_code_input"] = f"{prefix}-{next_num}"
 
 def generate_pdf_report(today_rev, today_profit, month_rev, month_profit, stock_cost, stock_sale, total_actual_profit):
     buffer = io.BytesIO()
@@ -390,7 +400,7 @@ else:
         else:
             st.info("لم يتم تسجيل أي عمليات بيع حتى الآن.")
 
-    # 2. إضافة مشتريات
+    # 2. إضافة مشتريات (مع دعم الأكواد المحدثة)
     if tab2 and st.session_state.role == "admin":
         with tab2:
             st.subheader("📦 إضافة منتج جديد للمخزون")
@@ -426,7 +436,7 @@ else:
 
             with col_p1:
                 p_name = st.text_input("اسم المنتج بالعربي", key="new_p_name_input", on_change=update_product_code)
-                p_code = st.text_input("كود المنتج", key="new_p_code_input")
+                p_code = st.text_input("كود المنتج التلقائي", key="new_p_code_input")
 
             with col_p2:
                 p_cost = st.number_input("سعر التكلفة", min_value=0.0, value=0.0)
@@ -465,7 +475,7 @@ else:
                 if "new_p_code_input" in st.session_state:
                     del st.session_state["new_p_code_input"]
                     
-                st.success(f"تمت إضافة المنتج ({final_name}) بنجاح للمخزون!")
+                st.success(f"تمت إضافة المنتج ({final_name}) بنجاح بالكود ({final_code})!")
                 st.rerun()
 
     # 3. إدارة المخزون والجرد
@@ -477,7 +487,7 @@ else:
                 cols_to_show = [c for c in df_stock.columns if "التكلفة" not in c and "الشراء" not in c]
                 st.dataframe(df_stock[cols_to_show], use_container_width=True)
             else:
-                st.info("💡 **طريقة التعديل المباشر:** اضغط على الخلية المراد تعديلها (اسم المنتج، السعر، أو الكمية)، ثم اضغط زر **'حفظ التعديلات'** بالأسفل ليتم تحديث الكود والبيانات تلقائياً.")
+                st.info("💡 **طريقة التعديل المباشر:** اضغط على الخلية المراد تعديلها (اسم المنتج، السعر، أو الكمية)، ثم اضغط زر **'حفظ التعديلات'** بالأسفل.")
                 
                 edited_df = st.data_editor(
                     df_stock,
@@ -488,18 +498,8 @@ else:
                 )
 
                 if st.button("💾 حفظ التعديلات على المخزون", type="primary"):
-                    for idx, row in edited_df.iterrows():
-                        old_code = str(df_stock.at[idx, "كود المنتج"]) if idx < len(df_stock) else ""
-                        old_num = old_code.split("-")[-1] if "-" in old_code else str(101 + idx)
-                        
-                        p_name = row["اسم المنتج"]
-                        prefix = get_auto_code_prefix(p_name)
-                        new_auto_code = f"{prefix}-{old_num}"
-                        
-                        edited_df.at[idx, "كود المنتج"] = new_auto_code
-
                     edited_df.to_excel(EXCEL_FILE, index=False)
-                    st.success("تم تحديث وحفظ بيانات المخزون وتغيير الأكواد تلقائياً بنجاح!")
+                    st.success("تم تحديث وحفظ بيانات المخزون بنجاح!")
                     st.rerun()
 
                 st.markdown("---")
