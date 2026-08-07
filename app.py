@@ -24,6 +24,27 @@ if "logged_in" not in st.session_state:
 if "sales_history" not in st.session_state:
     st.session_state.sales_history = []
 
+def sort_stock_df(df):
+    """ترتيب جدول المخزون حسب الكود (الكلمة الحرفية أولاً ثم الرقم تسلسلياً)"""
+    if df.empty or "كود المنتج" not in df.columns:
+        return df
+    
+    df_sorted = df.copy()
+    
+    def extract_sort_keys(code):
+        code_str = str(code).strip()
+        parts = code_str.split("-")
+        prefix = parts[0]
+        num = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+        return (prefix, num)
+
+    keys = df_sorted["كود المنتج"].apply(extract_sort_keys)
+    df_sorted["_prefix"] = [k[0] for k in keys]
+    df_sorted["_num"] = [k[1] for k in keys]
+    
+    df_sorted = df_sorted.sort_values(by=["_prefix", "_num"]).drop(columns=["_prefix", "_num"]).reset_index(drop=True)
+    return df_sorted
+
 def init_empty_excel():
     columns = ["كود المنتج", "اسم المنتج", "سعر الشراء (التكلفة)", "سعر البيع", "الكمية المتاحة", "تاريخ الإضافة"]
     df_empty = pd.DataFrame(columns=columns)
@@ -206,6 +227,7 @@ else:
 
     try:
         df_stock = pd.read_excel(EXCEL_FILE)
+        df_stock = sort_stock_df(df_stock)
     except Exception:
         df_stock = pd.DataFrame(columns=["كود المنتج", "اسم المنتج", "سعر الشراء (التكلفة)", "سعر البيع", "الكمية المتاحة", "تاريخ الإضافة"])
 
@@ -326,6 +348,8 @@ else:
                     current_qty = int(df_stock.at[idx, "الكمية المتاحة"])
                     new_qty = max(0, current_qty - qty)
                     df_stock.at[idx, "الكمية المتاحة"] = new_qty
+                    
+                    df_stock = sort_stock_df(df_stock)
                     df_stock.to_excel(EXCEL_FILE, index=False)
 
                 c_name_clean = customer_name.strip() if customer_name.strip() else "عميل نقدي"
@@ -381,6 +405,7 @@ else:
                             if not match_idx.empty:
                                 idx = match_idx[0]
                                 df_stock.at[idx, "الكمية المتاحة"] = int(df_stock.at[idx, "الكمية المتاحة"]) + qty_sold
+                                df_stock = sort_stock_df(df_stock)
                                 df_stock.to_excel(EXCEL_FILE, index=False)
 
                         st.session_state.sales_history.pop(sale_idx)
@@ -393,7 +418,7 @@ else:
         else:
             st.info("لم يتم تسجيل أي عمليات بيع حتى الآن.")
 
-    # 2. إضافة مشتريات (مع الترقيم التسلسلي المضمون)
+    # 2. إضافة مشتريات
     if tab2 and st.session_state.role == "admin":
         with tab2:
             st.subheader("📦 إضافة منتج جديد للمخزون")
@@ -440,7 +465,6 @@ else:
                 if not final_name:
                     st.error("يرجى إدخال اسم المنتج بالعربي أولاً!")
                 else:
-                    # تحديد الكود النهائي (تلقائي تسلسلي أو يدوي)
                     if p_code_custom.strip():
                         final_code = p_code_custom.strip()
                     else:
@@ -455,6 +479,9 @@ else:
                         "تاريخ الإضافة": str(p_date)
                     }
                     df_stock = pd.concat([df_stock, pd.DataFrame([new_row])], ignore_index=True)
+                    
+                    # إعادة الفرز والترتيب حسب الكود
+                    df_stock = sort_stock_df(df_stock)
                     df_stock.to_excel(EXCEL_FILE, index=False)
 
                     if supplier_name.strip():
@@ -466,19 +493,19 @@ else:
                         df_suppliers = pd.concat([df_suppliers, pd.DataFrame([new_sup])], ignore_index=True)
                         df_suppliers.to_excel(SUPPLIERS_FILE, index=False)
 
-                    st.success(f"تمت إضافة المنتج ({final_name}) بنجاح بالكود التسلسلي ({final_code})!")
+                    st.success(f"تمت إضافة المنتج ({final_name}) وترتيب المخزون بنجاح بالكود ({final_code})!")
                     st.rerun()
 
     # 3. إدارة المخزون والجرد
     with tab3:
-        st.subheader("📋 جدول جرد وتعديل المخزون")
+        st.subheader("📋 جدول جرد وتعديل المخزون (مرتب كودياً تلقائياً)")
         
         if not df_stock.empty:
             if st.session_state.role == "cashier":
                 cols_to_show = [c for c in df_stock.columns if "التكلفة" not in c and "الشراء" not in c]
                 st.dataframe(df_stock[cols_to_show], use_container_width=True)
             else:
-                st.info("💡 **طريقة التعديل المباشر:** اضغط على الخلية المراد تعديلها (اسم المنتج، السعر، أو الكمية)، ثم اضغط زر **'حفظ التعديلات'** بالأسفل.")
+                st.info("💡 **طريقة التعديل المباشر:** اضغط على الخلية المراد تعديلها، ثم اضغط زر **'حفظ التعديلات'** بالأسفل ليتم الترتيب وتحديث البيانات.")
                 
                 edited_df = st.data_editor(
                     df_stock,
@@ -489,8 +516,9 @@ else:
                 )
 
                 if st.button("💾 حفظ التعديلات على المخزون", type="primary"):
+                    edited_df = sort_stock_df(edited_df)
                     edited_df.to_excel(EXCEL_FILE, index=False)
-                    st.success("تم تحديث وحفظ بيانات المخزون بنجاح!")
+                    st.success("تم تحديث المخزون وإعادة ترتيبه كودياً بنجاح!")
                     st.rerun()
 
                 st.markdown("---")
@@ -506,6 +534,7 @@ else:
                         if item_to_delete:
                             code_to_del = item_to_delete.split(" - ")[0]
                             df_stock = df_stock[df_stock["كود المنتج"] != code_to_del]
+                            df_stock = sort_stock_df(df_stock)
                             df_stock.to_excel(EXCEL_FILE, index=False)
                             st.success("تم حذف المنتج المحدد من المخزون بنجاح!")
                             st.rerun()
