@@ -504,7 +504,7 @@ else:
 
     # 3. إدارة المخزون والجرد
     with tab3:
-        st.subheader("📋 جدول جرد وتعديل المخزون (مرتب كودياً وأبجدياً)")
+        st.subheader("📋 جدول جرد وتعديل المخزون ")
         
         if not df_stock.empty:
             if st.session_state.role == "cashier":
@@ -671,7 +671,7 @@ else:
     # 5. إدارة الموردين والعملاء
     if tab5 and st.session_state.role == "admin":
         with tab5:
-            st.subheader("👥 إدارة الموردين والعملاء (خـاص بالمدير)")
+            st.subheader("👥 إدارة الموردين والعملاء ")
             
             col_tab_a, col_tab_b = st.columns(2)
             
