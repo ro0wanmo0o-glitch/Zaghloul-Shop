@@ -2,3 +2,7 @@ streamlit
 pandas
 openpyxl
 reportlab
+streamlit
+pandas
+gspread
+openpyxl
